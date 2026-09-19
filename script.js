@@ -4,8 +4,7 @@ const CONFIG = {
   LOGO_FILE_ID: '1IqFbIfsFWGIXY08pwF8AnitxAuykh-fm',
   LOGO_URL: 'https://drive.google.com/thumbnail?id=1IqFbIfsFWGIXY08pwF8AnitxAuykh-fm&sz=w1200',
   GOOGLE_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxK-cY83QnCl7260NpB2n7W00EFHtA_XTVpKwht9-Q2C6HWJa1f52fnhabyDvUS6UOECQ/exec',
-  TELEGRAM_BOT_TOKEN: '',
-  TELEGRAM_CHAT_ID: '',
+  // Telegram credentials stay in Google Apps Script, not in the browser.
   FACEBOOK_URL: 'https://www.facebook.com/lorizcosmetics.bd',
   INSTAGRAM_URL: 'https://www.instagram.com/lorizcosmeticscare',
   WHATSAPP_URL: 'https://wa.me/8801876954397',
@@ -134,6 +133,7 @@ function buildSubmissionPayload(cvData = {}) {
     skillImprove: getValue('skillImprove'),
     assessment: getValue('customerAnswer'),
     whyLoriz: getValue('whyJoin'),
+    anythingElse: getValue('anythingElse'),
     cvName: cvData.name || '',
     cvMimeType: cvData.mimeType || '',
     cvBase64: cvData.base64 || ''
@@ -167,6 +167,75 @@ async function sendToAppsScript(payload) {
     body: JSON.stringify(payload)
   });
   if (!response.ok) throw new Error('The application could not be submitted.');
+
+  const result = await response.json().catch(() => ({}));
+  if (result.success === false) {
+    throw new Error(result.error || 'The application could not be saved.');
+  }
+  if (result.telegramSent === false && result.telegramError) {
+    console.warn('Telegram notification failed:', result.telegramError);
+  }
+  return true;
+}
+
+function buildTelegramMessage(payload) {
+  const rows = [
+    ['Name', payload.name],
+    ['Age', payload.age],
+    ['Phone', payload.phone],
+    ['Location', payload.location],
+    ['Education', payload.education],
+    ['Experience', payload.experience],
+    ['Skincare knowledge', payload.skincareKnowledge],
+    ['Communication', payload.communication],
+    ['Availability', payload.dailyAvailability],
+    ['Remote work', payload.remoteWork],
+    ['Device/internet', payload.deviceInternet],
+    ['Communication rating', payload.communicationRating],
+    ['Color answer', payload.colorAnswer],
+    ['Math answer', payload.mathAnswer],
+    ['Customer meaning', payload.customerMeaning],
+    ['Pressure handling', payload.pressureHandling],
+    ['Unclear task', payload.unclearTask],
+    ['Customer disagreement', payload.customerDisagreement],
+    ['Repetitive work', payload.repetitiveWork],
+    ['Team disagreement', payload.teamDisagreement],
+    ['Mistake response', payload.mistakeResponse],
+    ['Work priority', payload.workPriority],
+    ['Learning interest', payload.learningInterest],
+    ['Customer service', payload.customerService],
+    ['Skill to improve', payload.skillImprove],
+    ['Skincare assessment', payload.assessment],
+    ['Why LO\'RIZ', payload.whyLoriz],
+    ['CV', payload.cvName || 'Not uploaded']
+  ];
+  return `<b>New LO'RIZ Team Application</b>\\n\\n${rows
+    .filter(([, value]) => value !== undefined && value !== '')
+    .map(([label, value]) => `<b>${label}:</b> ${escapeTelegramHtml(value)}`)
+    .join('\\n')}`;
+}
+
+function escapeTelegramHtml(value) {
+  return String(value).replace(/[&<>]/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;'
+  }[character]));
+}
+
+async function sendToTelegram(payload) {
+  if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHAT_ID) return false;
+  const response = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: CONFIG.TELEGRAM_CHAT_ID,
+      text: buildTelegramMessage(payload),
+      parse_mode: 'HTML',
+      disable_web_page_preview: true
+    })
+  });
+  if (!response.ok) throw new Error('Telegram notification could not be sent.');
   return true;
 }
 
