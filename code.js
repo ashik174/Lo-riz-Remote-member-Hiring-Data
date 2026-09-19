@@ -14,8 +14,8 @@ const CONFIG = {
   SPREADSHEET_ID: '',
   SHEET_NAME: 'Applications',
 
-  // Optional Drive folder for uploaded CV files.
-  DRIVE_FOLDER_ID: '',
+  // Uploaded CV files are saved in this Drive folder.
+  DRIVE_FOLDER_ID: '18lLGDFHCuwP6rMyuKyR73gyDjFaAQ4dl',
 
   // Optional Telegram notification settings.
   TELEGRAM_BOT_TOKEN: '8774114299:AAGDDE0usil4RQ8p-fyNwyzubZBsbvJaJ6s',
@@ -86,9 +86,15 @@ function setupSheet() {
 /** Receives JSON data sent by the website. */
 function doPost(event) {
   try {
+    if (!event || !event.postData || !event.postData.contents) {
+      throw new Error('No application data received.');
+    }
+
     const payload = JSON.parse(event.postData.contents || '{}');
     const sheet = getSheet_();
     ensureHeaders_(sheet);
+    // Keep the sheet formatted automatically, including newly created sheets.
+    styleSheet_(sheet);
 
     const cvUrl = saveCv_(payload);
     const row = [
@@ -129,9 +135,15 @@ function doPost(event) {
     const nextRow = Math.max(sheet.getLastRow() + 1, 2);
     sheet.getRange(nextRow, 1, 1, row.length).setValues([row]);
     formatDataRow_(sheet, nextRow);
-    sendTelegramNotification_(payload, cvUrl);
+    // Refresh banding/filter ranges so the new application matches the sheet design.
+    styleSheet_(sheet);
+    const telegramResult = sendTelegramNotification_(payload, cvUrl);
 
-    return jsonResponse_({ success: true });
+    return jsonResponse_({
+      success: true,
+      telegramSent: telegramResult.sent,
+      telegramError: telegramResult.error || ''
+    });
   } catch (error) {
     console.error(error);
     return jsonResponse_({ success: false, error: error.message });
@@ -265,21 +277,48 @@ function removeFilter() {
 }
 
 function saveCv_(payload) {
-  if (!payload.cvBase64 || !payload.cvName) return '';
-  if (!CONFIG.DRIVE_FOLDER_ID) return 'Drive folder not configured';
+  if (!payload.cvBase64 && !payload.cvName) return '';
+  if (!payload.cvBase64 || !payload.cvName) {
+    throw new Error('The CV upload was incomplete. Please select the file again.');
+  }
 
-  const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+  // Save to the configured folder when available; otherwise use My Drive root.
+  const folder = CONFIG.DRIVE_FOLDER_ID
+    ? DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID)
+    : DriveApp.getRootFolder();
+
   const bytes = Utilities.base64Decode(payload.cvBase64);
-  const blob = Utilities.newBlob(
-    bytes,
-    payload.cvMimeType || MimeType.PDF,
-    payload.cvName
-  );
-  return folder.createFile(blob).getUrl();
+  const originalName = String(payload.cvName).trim();
+  const safeName = originalName.replace(/[\\/:*?"<>|]/g, '_');
+  const extension = safeName.match(/\\.[^.]+$/)?.[0].toLowerCase() || '';
+  const mimeType = payload.cvMimeType || getMimeTypeFromExtension_(extension);
+  const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
+  const blob = Utilities.newBlob(bytes, mimeType, `${timestamp}_${safeName}`);
+  const file = folder.createFile(blob);
+
+  // Sharing policies can block public links in some Google Workspace accounts;
+  // keep the upload successful even when link sharing is restricted.
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (sharingError) {
+    console.warn('Could not enable link sharing:', sharingError.message);
+  }
+  return file.getUrl();
+}
+
+function getMimeTypeFromExtension_(extension) {
+  const mimeTypes = {
+    '.pdf': MimeType.PDF,
+    '.doc': MimeType.MICROSOFT_WORD,
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  };
+  return mimeTypes[extension] || MimeType.PDF;
 }
 
 function sendTelegramNotification_(payload, cvUrl) {
-  if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHAT_ID) return;
+  if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHAT_ID) {
+    return { sent: false, error: 'Telegram bot token or chat ID is missing.' };
+  }
 
   const message = [
     'New LO\'RIZ application received',
@@ -293,7 +332,7 @@ function sendTelegramNotification_(payload, cvUrl) {
   ].join('\n');
 
   const url = 'https://api.telegram.org/bot' + CONFIG.TELEGRAM_BOT_TOKEN + '/sendMessage';
-  UrlFetchApp.fetch(url, {
+  const response = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',
     payload: JSON.stringify({
@@ -302,6 +341,20 @@ function sendTelegramNotification_(payload, cvUrl) {
     }),
     muteHttpExceptions: true
   });
+
+  const responseText = response.getContentText();
+  let result;
+  try {
+    result = JSON.parse(responseText);
+  } catch (error) {
+    return { sent: false, error: 'Invalid Telegram response: ' + responseText };
+  }
+
+  if (!result.ok) {
+    return { sent: false, error: result.description || 'Telegram rejected the message.' };
+  }
+
+  return { sent: true, error: '' };
 }
 
 function jsonResponse_(data) {
