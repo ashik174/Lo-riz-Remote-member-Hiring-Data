@@ -19,7 +19,7 @@ const CONFIG = {
 
   // Optional Telegram notification settings.
   TELEGRAM_BOT_TOKEN: '8774114299:AAGDDE0usil4RQ8p-fyNwyzubZBsbvJaJ6s',
-  TELEGRAM_CHAT_ID: '8827811694'
+  TELEGRAM_CHAT_ID: '8774114299'
 };
 
 const COLORS = {
