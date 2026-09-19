@@ -3,7 +3,7 @@ const CONFIG = {
   // Google Drive image ID. The thumbnail endpoint is more reliable for public images.
   LOGO_FILE_ID: '1IqFbIfsFWGIXY08pwF8AnitxAuykh-fm',
   LOGO_URL: 'https://drive.google.com/thumbnail?id=1IqFbIfsFWGIXY08pwF8AnitxAuykh-fm&sz=w1200',
-  GOOGLE_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyknwR-MPPb8qBfElhRcFcymJwJoke07liNir2JqO_8rzA1ZN84AH6PMC5TdJrQn833/exec',
+  GOOGLE_APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyyeViIhUUQKHQwwhIflLaEbN8rNLENnVkdFj53KmSJS4WM5rHlsQWJWyINcbEcMcph/exec',
   // Telegram credentials stay in Google Apps Script, not in the browser.
   FACEBOOK_URL: 'https://www.facebook.com/lorizcosmetics.bd',
   INSTAGRAM_URL: 'https://www.instagram.com/lorizcosmeticscare',
